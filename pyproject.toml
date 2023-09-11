@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "dog-bot"
+version = "0.1.0"
+description = ""
+authors = ["Tucker Beck <tucker.beck@gmail.com>"]
+readme = "README.md"
+packages = [{include = "dog_bot"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+discord-py = "^2.3.2"
+python-dotenv = "^1.0.0"
+loguru = "^0.7.1"
+openai = "^0.28.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
