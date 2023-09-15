@@ -26,7 +26,8 @@ command_ai_messages = [
               - CONFIRM: The player agrees with the current question
               - DENY: The player disagrees with the current question
               - JOIN: The player is requesting to join the current game
-              - LEAVE: The player is requesting to leae the current game
+              - ENLIST: The player is adding another player to the game
+              - LEAVE: The player is requesting to leave the current game
               - USERS: The player is requesting a list of all players in the game
               - STATUS: The player wants to know what the status of the game is and what commands are available
               - CHAT: The player just wants to chat with the bot
@@ -37,7 +38,7 @@ command_ai_messages = [
               - CHECK_PLAYERS: The player wants to see if there are enough players to continue playing
               - CHECK_PROBER: The player wants to see if the challenging player is still in the game
               - CHECK_VICTIM: The player wants to see if the challenged player is still in the game
-              - PICK PROBER: The player is choosing the next player to be a challenger
+              - PICK_PROBER: The player is choosing the next player to be a challenger
               - DOUBLE: The user is passing their challenge on to another user
 
             Users may send messages that don't match the commands exactly. Your job is to
@@ -50,10 +51,10 @@ command_ai_messages = [
             "CHOOSE_VICTIM -- I chose CHOOSE_VICTIM because the player is saying that they want Dusky to
             be the next player to take a turn."
 
-            Some of the commands, like CHOOSE VICTIM, involve another user that will be
-            mentioned in the user's message. For these messages, you should include the
-            username after the command and separated by a colon. For example, if the user says,
-            "I pick johnny", then your response should look like:
+            The commands, CHOOSE_VICTIM, ENLIST, CHOOSE_VICTIM, CHOOSE_POISON, and CHOOSE_ORDEAL, involve
+            another user that will be mentioned in the user's message. For these messages, you should
+            include the username after the command and separated by a colon. For example, if the user
+            says, "I pick johnny", then your response should look like:
             "CHOOSE_VICTIM:johnny -- I chose this because the user is challenging johnny next.
 
             It's also possible that the username mentioned is a formatted text string like,
@@ -164,17 +165,14 @@ user_ai_messages = [
             may be similar, a shortening, or a nickname of the target player name.
 
             You will be provided the name of the player to match followed by a colon and
-            then a comma-delimited list of potential matches. Here is an example input:
-
-            Robert: Alice, Bob, Charlie, Daniel, and Elenor.
-
+            then a comma-delimited list of potential matches.
 
             You will reply to each message with one sentence. The sentence should have a
             single word which is the player from the list that you think is being
             mentioned followed by two dashes and then an explanation of why the name was
             chosen.
 
-            For the example above, your response might be:
+            An example of a response is:
             "Bob -- I chose Bob because because Bob is a nickname for Robert.
             """
         ),
@@ -182,7 +180,7 @@ user_ai_messages = [
 ]
 
 
-def guess_user(text, user_list: list[str]) -> CommandGuess:
+def guess_user(text, user_list: list[str]) -> UserGuess:
     logger.debug(f"User AI processing input: {text=}, {user_list=}")
     user_list_text = ", ".join(user_list)
     user_ai_messages.append(
@@ -203,17 +201,17 @@ def guess_user(text, user_list: list[str]) -> CommandGuess:
     message = response.choices[0].message
     logger.debug(f"AI responded with {message=}")
 
-    pattern = r"(?P<user>[A-Z]+)\s*--\s*(?P<explanation>.*)"
+    pattern = r"(?P<name>.+)\s*--\s*(?P<explanation>.*)"
     regex_match: re.Match = BadUserInterpretation.enforce_defined(
         re.search(pattern, message.content),
         "AI Parsed user had an invalid pattern",
     )
-    user_match = regex_match.group("user")
+    name_match = regex_match.group("name")
     explanation_match = regex_match.group("explanation")
 
-    logger.debug(f"Parsed guess as: {user_match=}, {explanation_match=}")
+    logger.debug(f"Parsed guess as: {name_match=}, {explanation_match=}")
     guess = UserGuess(
-        user=user_match,
+        name=name_match.strip(),
         explanation=explanation_match,
     )
 

@@ -1,7 +1,7 @@
 from auto_name_enum import AutoNameEnum, auto
 
 PLAYERS_REQUIRED_TO_PLAY = 1
-BOT_NAME = "dog-bot"
+BOT_NAME = "dogbot"
 
 
 class LogLevelEnum(AutoNameEnum):
@@ -34,6 +34,7 @@ class Command(AutoNameEnum):
     CONFIRM = auto()
     DENY = auto()
     JOIN = auto()
+    ENLIST = auto()
     LEAVE = auto()
     USERS = auto()
     STATUS = auto()

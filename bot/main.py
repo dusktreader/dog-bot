@@ -12,7 +12,7 @@ from bot.ai import guess_command, guess_user, get_chat
 from bot.constants import Command, BOT_NAME
 from bot.exceptions import StateError
 from bot.state_machine import process_action
-from bot.types import CommandGuess, Game, Action
+from bot.types import CommandGuess, Game, Action, UserGuess
 
 
 logger.remove()
@@ -63,9 +63,8 @@ class MyClient(discord.Client):
                     await message.channel.send(f"I got confused, I'm sorry. I thought the command was {guess.command}")
                     return
 
-                await message.channel.send(
-                    snick.unwrap(f"I guessed that the command should be "{command}" because {guess.explanation}")
-                )
+                await message.channel.send(snick.unwrap(f"_I chose this command based on {message.author.name}'s message: {guess.command}_"))
+                await message.channel.send(snick.unwrap(f"_About why I chose this command: {guess.explanation}_"))
 
                 target = None
                 if guess.target is not None:
@@ -77,11 +76,20 @@ class MyClient(discord.Client):
                         logger.debug(f"Using {target_id=}")
                         target = discord_find(lambda m: m.id == target_id, message.mentions),
                     else:
-                        logger.debug("Target must be a name. Asking AI to guess")
-                        possible_player_names = [m.name for m in message.channel.members if m.name != BOT_NAME]
-                        target_name = guess_user(guess.target, )
-                        target = discord_find(lambda m: m.name == target_name, message.channel.members),
-
+                        logger.debug("Target must be a name. Looking them up")
+                        possible_player_names = {m.display_name: m for m in message.channel.members if m.display_name != BOT_NAME}
+                        logger.debug(f"Possible target names are {', '.join(possible_player_names.keys())}")
+                        target = possible_player_names.get(guess.target)
+                        if target is None:
+                            logger.debug(f"No exact match. Asking AI to guess the name")
+                            user_guess: UserGuess = guess_user(guess.target, list(possible_player_names.keys()))
+                            await message.channel.send(snick.unwrap(f"The user target name is {user_guess.name}"))
+                            await message.channel.send(snick.unwrap(f"_About why I chose this user: {user_guess.explanation}_"))
+                            logger.debug(f"Looking up {user_guess.name} in {', '.join(possible_player_names.keys())}")
+                            target = possible_player_names.get(user_guess.name)
+                            if target is None:
+                                await message.channel.send(f"Well, shit...I can't guess who that is referring to. Sorry!")
+                                return
 
                 action = Action(
                     command=command,
@@ -100,6 +108,7 @@ class MyClient(discord.Client):
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 client = MyClient(intents=intents)
 

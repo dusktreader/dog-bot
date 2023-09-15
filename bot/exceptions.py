@@ -24,25 +24,16 @@ class NoSuchMappingError(StateError):
 
 
 class NotEnoughPlayersError(StateError):
-    def __init__(self, message: str, player_count: int, required_count: int):
-        super().__init__(message)
-        self.player_count = player_count
-        self.required_count = required_count
+    pass
 
 
 class AlreadyJoinedError(StateError):
-    def __init__(self, message: str, player: Member):
-        super().__init__(message)
-        self.player = player
+    pass
 
 
 class NotJoinedError(StateError):
-    def __init__(self, message: str, player: Member):
-        super().__init__(message)
-        self.player = player
+    pass
 
 
 class AlreadyHaveProberError(StateError):
-    def __init__(self, message: str, player: Member):
-        super().__init__(message)
-        self.player = player
+    pass
