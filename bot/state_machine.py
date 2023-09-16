@@ -112,15 +112,15 @@ def try_to_start_game(action: Action) -> GameStatus:
         f"Not enough players to play. Have {len(action.game.players)}; need {PLAYERS_REQUIRED_TO_PLAY}",
     )
     action.game.message_queue.append(f"<@{action.player.id}> started the game")
-    return GameStatus.AWAITING_VICTIM
+    return GameStatus.AWAITING_PROBER
 
 
 def finish_game(action: Action) -> GameStatus:
     action.game.message_queue.append(f"<@{action.player.id}> stopped the game")
-    action.game.victim = None
-    action.game.prober = None
-    action.game.poison = None
-    return GameStatus.IDLE
+        action.game.victim = None
+        action.game.prober = None
+        action.game.poison = None
+        return GameStatus.IDLE
 
 
 def choose_victim(action: Action) -> GameStatus:

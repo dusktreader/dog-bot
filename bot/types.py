@@ -13,7 +13,7 @@ class Game:
     poison: Poison | None = None
     ordeal: str | None = None
     status: GameStatus = GameStatus.IDLE
-    message_queue: list[str]  = field(default_factory=lambda: [])
+    message_queue: list[str] = field(default_factory=lambda: [])
 
     def reset(self):
         self.prober = None
@@ -39,6 +39,14 @@ class CommandGuess:
 class UserGuess:
     name: str
     explanation: str
+
+
+@dataclass
+class ActionGuess:
+    command: Command | None = None
+    target_id: int | None = None
+    choice: Poison | str | None = None
+    message_queue: list[str] = field(default_factory=lambda: [])
 
 
 @dataclass

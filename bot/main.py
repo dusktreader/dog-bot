@@ -8,19 +8,48 @@ from loguru import logger
 from discord.utils import find as discord_find
 
 from bot.config import settings
-from bot.ai import guess_command, guess_user, get_chat
+from bot.ai import guess_command, guess_user, get_chat, guess_action
 from bot.constants import Command, BOT_NAME
 from bot.exceptions import StateError
 from bot.state_machine import process_action
-from bot.types import CommandGuess, Game, Action, UserGuess
+from bot.types import CommandGuess, Game, Action, UserGuess, ActionGuess
 
 
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
 
 
+
+
 class MyClient(discord.Client):
     current_game: Game = Game()
+
+    def parse_command(self, action_guess: ActionGuess, command_text: str):
+        regex_match = re.match(
+            r"^{bot_name} <@{self.user.id}>\s+(:P<command>\w+)(?:\s+(?<target_id><@\d+>)".format(
+                bot_name=BOT_NAME,
+                user_id=self.user.id,
+            ),
+            command_text,
+        )
+        if regex_match is None:
+            return
+        command_text = regex_match.group("command")
+        try:
+            action_guess.command = Command(command_text)
+        except Exception as err:
+            logger.debug(f"Regex parsed command invalid: {err}. Falling back to command guessing")
+            action_guess.command = None
+            return
+        target_id_text = regex_match.group("target_id")
+        if target_id_text is None:
+            action_guess.target_id = None
+            return
+        try:
+            target_id = int(target_id_text)
+        except Exception as err:
+            logger.debug(f"Regex parsed target_id invalid: {err}. Falling back to command guessing")
+            action_guess.command = None
 
     async def on_ready(self):
         logger.debug(f'Logged on as {self.user}!')
@@ -31,80 +60,35 @@ class MyClient(discord.Client):
             logger.debug("Skipping message since dog-bot wasn't mentioned")
             return
 
-        message.content = message.content.replace(f"<@{self.user.id}>", "DOGBOT")
+        message.content = message.content.replace(f"<@{self.user.id}>", BOT_NAME)
         logger.debug(f"Santized content: {message.content}")
         if message.author != self.user:
             # try to parse exact command to save AI work
-            guess: CommandGuess = guess_command(message.content)
-            guess.command = guess.command.replace(" ", "_")
-            if guess.command is Command.CHAT:
-                chat_message = get_chat(message.content)
-                await message.channel.send(f"<@{message.author.id}>, {chat_message}")
-            elif guess.command is Command.MISS:
-                chat_message = get_chat(message.content, was_miss=True)
-                await message.channel.send(f"<@{message.author.id}>, {chat_message}")
-            else:
+            action_guess = ActionGuess()
+            self.parse_command(action_guess, message.content)
+            if action_guess.command is None:
+                logger.debug("Couldn't parse command directly. Falling back to guessing")
+                player_id_map = {m.display_name: m.id for m in message.channel.members if m.display_name != BOT_NAME}
+                guess_action(action_guess, message.content, player_id_map)
+                for bot_message in guess_action.game.iter_messages():
+                    await message.channel.send(bot_message)
 
-                try:
-                    command = Command(guess.command)
-                except Exception as err:
-                    logger.debug("Invalid command guessed by AI: {guess.command}")
-                    await message.channel.send(
-                        snick.unwrap(
-                            f"""
-                            I'm an idiot, <@{message.author.id}, I got confused and made up my own command:
-                            {guess.command}.
-                            Please try again, and I'll try to be smarter!
-                            """)
-                    )
-                    return
+            if action_guess.command is None:
 
-                if command is Command.MISS:
-                    await message.channel.send(f"I got confused, I'm sorry. I thought the command was {guess.command}")
-                    return
+            action = Action(
+                command=command,
+                player=message.author,
+                target=discord_find(lambda m: m.id == target_id, message.mentions),
+                game=self.current_game,
+                choice="FIX ME",
+            )
 
-                await message.channel.send(snick.unwrap(f"_I chose this command based on {message.author.name}'s message: {guess.command}_"))
-                await message.channel.send(snick.unwrap(f"_About why I chose this command: {guess.explanation}_"))
-
-                target = None
-                if guess.target is not None:
-                    logger.debug("Trying to deduce the player from {guess.target}")
-                    regex_match = re.search(r"<@(\d+)>", guess.target)
-                    if regex_match is not None:
-                        logger.debug("Target is a player id")
-                        target_id = int(regex_match.group(0))
-                        logger.debug(f"Using {target_id=}")
-                        target = discord_find(lambda m: m.id == target_id, message.mentions),
-                    else:
-                        logger.debug("Target must be a name. Looking them up")
-                        possible_player_names = {m.display_name: m for m in message.channel.members if m.display_name != BOT_NAME}
-                        logger.debug(f"Possible target names are {', '.join(possible_player_names.keys())}")
-                        target = possible_player_names.get(guess.target)
-                        if target is None:
-                            logger.debug(f"No exact match. Asking AI to guess the name")
-                            user_guess: UserGuess = guess_user(guess.target, list(possible_player_names.keys()))
-                            await message.channel.send(snick.unwrap(f"The user target name is {user_guess.name}"))
-                            await message.channel.send(snick.unwrap(f"_About why I chose this user: {user_guess.explanation}_"))
-                            logger.debug(f"Looking up {user_guess.name} in {', '.join(possible_player_names.keys())}")
-                            target = possible_player_names.get(user_guess.name)
-                            if target is None:
-                                await message.channel.send(f"Well, shit...I can't guess who that is referring to. Sorry!")
-                                return
-
-                action = Action(
-                    command=command,
-                    player=message.author,
-                    target=target,
-                    game=self.current_game,
-                    choice="FIX ME",
-                )
-
-                try:
-                    process_action(action)
-                    for bot_message in action.game.iter_messages():
-                        await message.channel.send(bot_message)
-                except StateError as err:
-                    await message.channel.send(err.message)
+            try:
+                process_action(action)
+                for bot_message in action.game.iter_messages():
+                    await message.channel.send(bot_message)
+            except StateError as err:
+                await message.channel.send(err.message)
 
 intents = discord.Intents.default()
 intents.message_content = True
