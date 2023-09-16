@@ -115,6 +115,14 @@ def try_to_start_game(action: Action) -> GameStatus:
     return GameStatus.AWAITING_VICTIM
 
 
+def finish_game(action: Action) -> GameStatus:
+    action.game.message_queue.append(f"<@{action.player.id}> stopped the game")
+    action.game.victim = None
+    action.game.prober = None
+    action.game.poison = None
+    return GameStatus.IDLE
+
+
 def choose_victim(action: Action) -> GameStatus:
     NotJoinedError.require_condition(action.target in action.game.players, "Can't choose a victim {action.target} that isn't in the game")
     action.game.victim = action.target
