@@ -22,6 +22,9 @@ python-statemachine = "^2.1.1"
 bot = "bot.main:run"
 
 
+[tool.poetry.group.dev.dependencies]
+ipython = "^8.15.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

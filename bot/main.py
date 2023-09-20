@@ -1,5 +1,6 @@
 import re
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import discord
@@ -16,8 +17,22 @@ from bot.types import CommandGuess, Game, Action, UserGuess, ActionGuess
 
 
 logger.remove()
-logger.add(sys.stderr, level="DEBUG")
+logger.add(sys.stderr, level="TRACE")
 
+
+@contextmanager
+def log_chat(channel):
+    async def _send(message):
+        print("SENDING: ", message)
+        await channel.send(message.record["message"])
+
+    handler_id = logger.add(_send, level="INFO")
+    print("ADDED HANDLER", handler_id)
+    try:
+        yield
+    finally:
+        logger.remove(handler_id)
+        print("REMOVED HANDLER", handler_id)
 
 
 
@@ -25,16 +40,17 @@ class MyClient(discord.Client):
     current_game: Game = Game()
 
     def parse_command(self, action_guess: ActionGuess, command_text: str):
+        logger.debug(f"Attempting to parse command directly from: {command_text}")
         regex_match = re.match(
-            r"^{bot_name} <@{self.user.id}>\s+(:P<command>\w+)(?:\s+(?<target_id><@\d+>)".format(
+            r"^{bot_name}\s+(?P<command>\w+)(?:\s+<@(?P<target_id>\d+)>)?$".format(
                 bot_name=BOT_NAME,
-                user_id=self.user.id,
             ),
             command_text,
         )
         if regex_match is None:
+            logger.debug("Couldn't parse command from input")
             return
-        command_text = regex_match.group("command")
+        command_text = regex_match.group("command").upper()
         try:
             action_guess.command = Command(command_text)
         except Exception as err:
@@ -46,7 +62,7 @@ class MyClient(discord.Client):
             action_guess.target_id = None
             return
         try:
-            target_id = int(target_id_text)
+            action_guess.target_id = int(target_id_text)
         except Exception as err:
             logger.debug(f"Regex parsed target_id invalid: {err}. Falling back to command guessing")
             action_guess.command = None
@@ -55,40 +71,40 @@ class MyClient(discord.Client):
         logger.debug(f'Logged on as {self.user}!')
 
     async def on_message(self, message):
-        logger.debug(f'Message from {message.author} in {message.channel}: {message.content}')
-        if self.user not in message.mentions:
-            logger.debug("Skipping message since dog-bot wasn't mentioned")
-            return
+        with log_chat(message.channel):
+            logger.debug(f'Message from {message.author} in {message.channel}: {message.content}')
+            if self.user not in message.mentions:
+                logger.debug("Skipping message since dog-bot wasn't mentioned")
+                return
 
-        message.content = message.content.replace(f"<@{self.user.id}>", BOT_NAME)
-        logger.debug(f"Santized content: {message.content}")
-        if message.author != self.user:
-            # try to parse exact command to save AI work
-            action_guess = ActionGuess()
-            self.parse_command(action_guess, message.content)
-            if action_guess.command is None:
-                logger.debug("Couldn't parse command directly. Falling back to guessing")
-                player_id_map = {m.display_name: m.id for m in message.channel.members if m.display_name != BOT_NAME}
-                guess_action(action_guess, message.content, player_id_map)
-                for bot_message in guess_action.game.iter_messages():
-                    await message.channel.send(bot_message)
+            logger.info("At your service!")
 
-            if action_guess.command is None:
+            message.content = message.content.replace(f"<@{self.user.id}>", BOT_NAME)
+            logger.debug(f"Sanitized content: {message.content}")
+            if message.author != self.user:
+                # try to parse exact command to save AI work
+                action_guess = ActionGuess(player_id=message.author.id)
+                self.parse_command(action_guess, message.content)
+                if action_guess.command is None or action_guess.command is Command.MISS:
+                    logger.debug("Couldn't parse command directly. Falling back to guessing")
+                    player_id_map = {m.display_name: m.id for m in message.channel.members if m.display_name != BOT_NAME}
+                    guess_action(action_guess, message.content, player_id_map)
 
-            action = Action(
-                command=command,
-                player=message.author,
-                target=discord_find(lambda m: m.id == target_id, message.mentions),
-                game=self.current_game,
-                choice="FIX ME",
-            )
+                logger.debug(f"Looking up {action_guess.target_id=}  in {message.channel.members}")
+                action = Action(
+                    command=action_guess.command,
+                    player=message.author,
+                    target=discord_find(lambda m: m.id == action_guess.target_id, message.channel.members),
+                    game=self.current_game,
+                    choice="FIX ME",
+                )
+                logger.debug(f"Constructed this action from the guess: {action}")
 
-            try:
-                process_action(action)
-                for bot_message in action.game.iter_messages():
-                    await message.channel.send(bot_message)
-            except StateError as err:
-                await message.channel.send(err.message)
+
+                try:
+                    process_action(action)
+                except StateError as err:
+                    await message.channel.send(err.message)
 
 intents = discord.Intents.default()
 intents.message_content = True

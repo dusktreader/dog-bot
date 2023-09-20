@@ -200,7 +200,7 @@ def guess_user(text, user_list: list[str]) -> UserGuess:
     message = response.choices[0].message
     logger.debug(f"AI responded with {message=}")
 
-    pattern = r"(?P<name>.+)\s*--\s*(?P<explanation>.*)"
+    pattern = r"(?P<name>.+)\s*--+\s*(?P<explanation>.*)"
     regex_match: re.Match = BadUserInterpretation.enforce_defined(
         re.search(pattern, message.content),
         "AI Parsed user had an invalid pattern",
@@ -224,37 +224,36 @@ def guess_action(action_guess: ActionGuess, text: str, player_id_map: dict[str, 
     command_guess.command = command_guess.command.replace(" ", "_")
     if command_guess.command is Command.CHAT:
         chat_message = get_chat(text)
-        action_guess.message_queue.append(f"<@{message.author.id}>, {chat_message}")
+        logger.info(f"<@{action_guess.player_id}>, {chat_message}")
     elif command_guess.command is Command.MISS:
         chat_message = get_chat(message.content, was_miss=True)
-        action_guess.message_queue.append(f"<@{message.author.id}>, {chat_message}")
+        logger.info(f"<@{action_guess.player_id}>, {chat_message}")
     else:
         try:
-            command = Command(command_guess.command)
+            action_guess.command = Command(command_guess.command)
         except Exception as err:
-            logger.debug(f"Invalid command guessed by AI: {guess.command}: {err}")
-            action_guess.message_queue.append(
+            logger.debug(f"Invalid command guessed by AI: {command_guess.command}: {err}")
+            logger.info(
                 snick.unwrap(
                     f"""
                     I'm an idiot! I got confused and made up my own command:
-                    {guess.command}.
+                    {command_guess.command}.
                     Please try again, and I'll try to be smarter!
                     """
                 )
             )
             return
 
-        if command is Command.MISS:
-            action_guess.message_queue.append(f"I got confused, I'm sorry. I thought the command was {guess.command}")
+        if action_guess.command is Command.MISS:
+            logger.info(f"I got confused, I'm sorry. I thought the command was {command_guess.command}")
             return
 
-        action_guess.message_queue.append(f"_I chose this command: {guess.command}_"))
-        action_guess.message_queue.append(f"_About why I chose this command: {guess.explanation}_"))
+        logger.info(f"_I chose this command: {command_guess.command}_")
+        logger.info(f"_About why I chose this command: {command_guess.explanation}_")
 
-        target = None
         if command_guess.target is not None:
-            logger.debug("Trying to deduce the player from {guess.target}")
-            regex_match = re.search(r"<@(\d+)>", guess.target)
+            logger.debug(f"Trying to deduce the player from {command_guess.target}")
+            regex_match = re.search(r"<@(\d+)>", command_guess.target)
             if regex_match is not None:
                 logger.debug("Target is a player id")
                 action_guess.target_id = int(regex_match.group(0))
@@ -265,9 +264,9 @@ def guess_action(action_guess: ActionGuess, text: str, player_id_map: dict[str, 
                 if action_guess.target_id is None:
                     logger.debug(f"No exact match. Going to try to guess the name")
                     user_guess: UserGuess = guess_user(command_guess.target, list(player_id_map.keys()))
-                    action_guess.message_queue.append(f"The user target name is {user_guess.name}")
-                    action_guess.message_queue.append(f"About why I chose this user: {user_guess.explanation}")
+                    logger.info(f"The user target name is {user_guess.name}")
+                    logger.info(f"About why I chose this user: {user_guess.explanation}")
                     logger.debug(f"Looking up {user_guess.name} in {', '.join(player_id_map.keys())}")
-                    target = player_id_map.get(user_guess.name)
-                    if target is None:
-                        action_guess.message_queue.append(f"Well, shit...I can't guess who that is referring to. Sorry!")
+                    action_guess.target_id = player_id_map.get(user_guess.name)
+                    if action_guess.target_id is None:
+                        logger.info(f"Well, shit...I can't guess who that is referring to. Sorry!")

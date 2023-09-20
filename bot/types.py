@@ -13,7 +13,6 @@ class Game:
     poison: Poison | None = None
     ordeal: str | None = None
     status: GameStatus = GameStatus.IDLE
-    message_queue: list[str] = field(default_factory=lambda: [])
 
     def reset(self):
         self.prober = None
@@ -21,11 +20,6 @@ class Game:
         self.poison = None
         self.ordeal = None
         self.status = GameStatus.Idle
-        self.message_queue = []
-
-    def iter_messages(self):
-        while len(self.message_queue) > 0:
-            yield self.message_queue.pop(0)
 
 
 @dataclass
@@ -43,10 +37,10 @@ class UserGuess:
 
 @dataclass
 class ActionGuess:
-    command: Command | None = None
+    player_id: int
     target_id: int | None = None
+    command: Command | None = None
     choice: Poison | str | None = None
-    message_queue: list[str] = field(default_factory=lambda: [])
 
 
 @dataclass
