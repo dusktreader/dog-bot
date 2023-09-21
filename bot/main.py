@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 import re
+import signal
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -20,24 +23,14 @@ logger.remove()
 logger.add(sys.stderr, level="TRACE")
 
 
-@contextmanager
-def log_chat(channel):
-    async def _send(message):
-        print("SENDING: ", message)
-        await channel.send(message.record["message"])
-
-    handler_id = logger.add(_send, level="INFO")
-    print("ADDED HANDLER", handler_id)
-    try:
-        yield
-    finally:
-        logger.remove(handler_id)
-        print("REMOVED HANDLER", handler_id)
-
-
 
 class MyClient(discord.Client):
     current_game: Game = Game()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+
 
     def parse_command(self, action_guess: ActionGuess, command_text: str):
         logger.debug(f"Attempting to parse command directly from: {command_text}")
@@ -47,6 +40,7 @@ class MyClient(discord.Client):
             ),
             command_text,
         )
+
         if regex_match is None:
             logger.debug("Couldn't parse command from input")
             return
@@ -67,11 +61,40 @@ class MyClient(discord.Client):
             logger.debug(f"Regex parsed target_id invalid: {err}. Falling back to command guessing")
             action_guess.command = None
 
+    @contextmanager
+    def log_chat(self, channel):
+        def _send(message):
+            self.loop.create_task(channel.send(message.record["message"]))
+
+        logger.debug("Adding chat logging handler")
+        handler_id = logger.add(_send, level="INFO")
+        try:
+            yield
+        finally:
+            logger.remove(handler_id)
+            logger.debug("Removed chat logging handler")
+
+    def iter_channels(self):
+        for channel in self.get_all_channels():
+            if channel is discord.TextChannel:
+                yield channel
+
+    def exit_gracefully(self, *_):
+        for channel in self.iter_channels():
+            with self.log_chat(channel):
+                logger.info("I am being closed server-side. Exiting immediately. Goodbye for now!")
+
+        self.loop.create_task(self.close())
+
     async def on_ready(self):
         logger.debug(f'Logged on as {self.user}!')
+        for channel in self.iter_channels():
+            print("channel", channel)
+            with self.log_chat(channel):
+                logger.info("Someone spun the ol' bot up. How are y'all?")
 
     async def on_message(self, message):
-        with log_chat(message.channel):
+        with self.log_chat(message.channel):
             logger.debug(f'Message from {message.author} in {message.channel}: {message.content}')
             if self.user not in message.mentions:
                 logger.debug("Skipping message since dog-bot wasn't mentioned")
@@ -88,13 +111,20 @@ class MyClient(discord.Client):
                 if action_guess.command is None or action_guess.command is Command.MISS:
                     logger.debug("Couldn't parse command directly. Falling back to guessing")
                     player_id_map = {m.display_name: m.id for m in message.channel.members if m.display_name != BOT_NAME}
+                    logger.debug(f"Built {player_id_map=}")
                     guess_action(action_guess, message.content, player_id_map)
 
-                logger.debug(f"Looking up {action_guess.target_id=}  in {message.channel.members}")
+                if action_guess.target_id is None:
+                    target = None
+                else:
+                    logger.debug(f"Looking up {action_guess.target_id=}")
+                    target = discord_find(lambda m: m.id == action_guess.target_id, message.channel.members)
+                    logger.debug(f"Selected target with {target.id=}, {target.name=}, {target.display_name=}")
+
                 action = Action(
                     command=action_guess.command,
                     player=message.author,
-                    target=discord_find(lambda m: m.id == action_guess.target_id, message.channel.members),
+                    target=target,
                     game=self.current_game,
                     choice="FIX ME",
                 )
@@ -149,3 +179,6 @@ there isn't any going yet!
 
 <@{message.author.id}> has challenged you, <@{action.target}>! Truth or Dare?!
 """
+
+if __name__ == "__main__":
+    run()

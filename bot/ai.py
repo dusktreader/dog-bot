@@ -248,8 +248,8 @@ def guess_action(action_guess: ActionGuess, text: str, player_id_map: dict[str, 
             logger.info(f"I got confused, I'm sorry. I thought the command was {command_guess.command}")
             return
 
-        logger.info(f"_I chose this command: {command_guess.command}_")
-        logger.info(f"_About why I chose this command: {command_guess.explanation}_")
+        logger.info(f"> I chose this command: {command_guess.command}")
+        logger.info(f"> About why I chose this command: {command_guess.explanation}")
 
         if command_guess.target is not None:
             logger.debug(f"Trying to deduce the player from {command_guess.target}")
@@ -264,8 +264,8 @@ def guess_action(action_guess: ActionGuess, text: str, player_id_map: dict[str, 
                 if action_guess.target_id is None:
                     logger.debug(f"No exact match. Going to try to guess the name")
                     user_guess: UserGuess = guess_user(command_guess.target, list(player_id_map.keys()))
-                    logger.info(f"The user target name is {user_guess.name}")
-                    logger.info(f"About why I chose this user: {user_guess.explanation}")
+                    logger.info(f"I chose {user_guess.name} as the target of the command")
+                    logger.info(f"> About why I chose this user: {user_guess.explanation}")
                     logger.debug(f"Looking up {user_guess.name} in {', '.join(player_id_map.keys())}")
                     action_guess.target_id = player_id_map.get(user_guess.name)
                     if action_guess.target_id is None:

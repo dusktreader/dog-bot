@@ -22,11 +22,51 @@ from bot.exceptions import (
 )
 
 
+def report_status(game: Game, verbose=False):
+    report = []
+
+    friendly_statuses = {
+        GameStatus.IDLE: "waiting for someone to start a game",
+        GameStatus.AWAITING_PROBER: "waiting for a prober to be picked",
+        GameStatus.AWAITING_VICTIM: "waiting for a victim to be picked",
+        GameStatus.AWAITING_POISON: "waiting for the victim to choose their posion",
+        GameStatus.AWAITING_ORDEAL: "waiting for the prober to choose the victim's ordeal",
+        GameStatus.AWAITING_ACCEPT_ORDEAL: "waiting for the victim to accept the ordeal",
+        GameStatus.AWAITING_PROOFS: "waiting for the victim to provide proof of the ordeal",
+        GameStatus.AWAITING_ACCEPT_PROOFS: "waiting for the prober to accept the proof",
+    }
+    report.append(f"I am {friendly_statuses[game.status]}.")
+
+    if verbose:
+        available_commands = ", ".join(transitions.get(game.status, {}).keys())
+        report.append(f"The actions that are available right now are: {available_commands}")
+
+        if len(game.players) == 0:
+            report.append("There are no players in the game yet.")
+        else:
+            players = ", ".join([p.display_name for p in game.players])
+            report.append(f"The current players are: {players}")
+
+        if game.prober is not None:
+            report.append(f"The prober is {game.prober.display_name}")
+
+        if game.victim is not None:
+            report.append(f"The victim is {game.victim.display_name}")
+
+        if game.poison is not None:
+            report.append(f"The posion is {game.poison}")
+
+        if game.ordeal is not None:
+            report.append(f"The ordeal is {game.ordeal}")
+
+    logger.info("\n".join(report))
+
+
+
 def process_action(action: Action):
     if action.command == Command.STATUS:
-        available_commands = ", ".join(transitions.get(action.game.status, {}).keys())
         logger.info(f"<@{action.player.id}> wants to know the status of the game")
-        logger.info(f"The game status is: {action.game.status}, and the available actions are: {available_commands}")
+        report_status(action.game, verbose=True)
         return
 
     transition_function = NoSuchMappingError.enforce_defined(
@@ -35,6 +75,7 @@ def process_action(action: Action):
     )
     logger.debug(f"Processing {transition_function=}")
     action.game.status = transition_function(action)
+    report_status(action.game)
 
 
 def join_game(action: Action) -> GameStatus:
@@ -101,8 +142,13 @@ def pick_prober(action: Action) -> GameStatus:
         action.game.prober is None,
         f"There is already a prober selected",
     )
-    action.game.prober = choice(action.game.players)
-    logger.info(f"Choosing a new prober...and it's <@{action.game.prober.id}>!")
+
+    if action.target is None:
+        action.game.prober = choice(action.game.players)
+        logger.info(f"Choosing a new prober at random...and it's <@{action.game.prober.id}>!")
+    else:
+        action.game.prober = action.target
+        logger.info(f"<@{action.player.id}> chose <@{action.player.id}> as the new prober!")
     return GameStatus.AWAITING_VICTIM
 
 

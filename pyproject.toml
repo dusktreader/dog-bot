@@ -20,10 +20,12 @@ python-statemachine = "^2.1.1"
 
 [tool.poetry.scripts]
 bot = "bot.main:run"
+watcher = "bot.watcher:run"
 
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.15.0"
+watchdog = "^3.0.0"
 
 [build-system]
 requires = ["poetry-core"]
